@@ -36,6 +36,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 
+import com.dkaedv.glghproxy.Constants;
 import com.dkaedv.glghproxy.converter.GitlabToGithubConverter;
 import com.dkaedv.glghproxy.githubentity.HookRequest;
 import com.dkaedv.glghproxy.gitlabclient.GitlabSessionProvider;
@@ -231,7 +232,9 @@ public class ReposController {
 				hook.getConfig().get("url"), 
 				hook.getEvents().contains("push"), 
 				false,
-				hook.getEvents().contains("pull_request"));
+				hook.getEvents().contains("pull_request"),
+				hook.getEvents().contains("push"), // there's no differentiation for tag-pushes in the github API
+				Constants.STRICT_SSL);
 		
 		return GitlabToGithubConverter.convertHook(createdHook);
 	}
