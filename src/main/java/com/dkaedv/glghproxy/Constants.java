@@ -14,5 +14,7 @@ public final class Constants {
 	
 	public static final boolean STRICT_SSL = true;
 	public static final boolean IGNORE_SSL_ERRORS = !STRICT_SSL;
+	
+	public static final String KEY_FALLBACK_AVATAR_URL = "fallbackAvatarUrl";
 
 }

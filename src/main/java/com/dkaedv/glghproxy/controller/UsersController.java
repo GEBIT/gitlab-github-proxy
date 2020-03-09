@@ -10,6 +10,7 @@ import org.gitlab.api.models.GitlabProject;
 import org.gitlab.api.models.GitlabUser;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -30,6 +31,9 @@ public class UsersController {
 	@Autowired
 	private GitlabSessionProvider gitlab;
 
+	@Autowired
+	private Environment env;
+	
 	@Value("${treatOrgaAsOwner}")
 	private Boolean treatOrgaAsOwner;
 	
@@ -53,7 +57,7 @@ public class UsersController {
 		GitlabUser user = Utils.findSingleUser(users, username);
 
 		if (user != null) {
-			return new ResponseEntity<User>(GitlabToGithubConverter.convertUser(user), HttpStatus.OK);
+			return new ResponseEntity<User>(GitlabToGithubConverter.convertUser(user, env), HttpStatus.OK);
 		} else {
 			return new ResponseEntity<User>(HttpStatus.NOT_FOUND);
 		}

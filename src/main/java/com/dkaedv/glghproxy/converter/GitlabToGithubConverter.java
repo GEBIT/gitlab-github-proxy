@@ -33,8 +33,11 @@ import org.gitlab.api.models.GitlabNote;
 import org.gitlab.api.models.GitlabProject;
 import org.gitlab.api.models.GitlabProjectHook;
 import org.gitlab.api.models.GitlabUser;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 
 import com.dkaedv.glghproxy.Application;
+import com.dkaedv.glghproxy.Constants;
 import com.fasterxml.jackson.core.JsonProcessingException;
 
 public class GitlabToGithubConverter {
@@ -64,7 +67,7 @@ public class GitlabToGithubConverter {
 	}
 
 	public static RepositoryCommit convertCommit(GitlabCommit glcommit, List<GitlabCommitDiff> gldiffs,
-			GitlabUser gluser) {
+			GitlabUser gluser, Environment env) {
 		RepositoryCommit repoCommit = new RepositoryCommit();
 
 		repoCommit.setSha(glcommit.getId());
@@ -81,9 +84,14 @@ public class GitlabToGithubConverter {
 
 		repoCommit.setCommit(commit);
 
-		User user = new User();
-		user.setEmail(glcommit.getAuthorEmail());
-		user.setLogin(gluser != null ? gluser.getUsername() : null);
+		User user = null;
+		if (gluser == null) {
+			user = new User();
+			user.setEmail(glcommit.getAuthorEmail());
+			user.setAvatarUrl(env.getProperty(Constants.KEY_FALLBACK_AVATAR_URL));
+		} else {
+			user = convertUser(gluser, env);
+		}
 		repoCommit.setAuthor(user);
 		repoCommit.setCommitter(user);
 
@@ -200,22 +208,22 @@ public class GitlabToGithubConverter {
 	}
 
 	public static List<PullRequest> convertMergeRequests(List<GitlabMergeRequest> glmergerequests, String gitlabUrl,
-			String namespace, String repo) {
+			String namespace, String repo, Environment env) {
 		List<PullRequest> pulls = new ArrayList<>(glmergerequests.size());
 
 		for (GitlabMergeRequest glmr : glmergerequests) {
-			pulls.add(convertMergeRequest(glmr, gitlabUrl, namespace, repo));
+			pulls.add(convertMergeRequest(glmr, gitlabUrl, namespace, repo, env));
 		}
 
 		return pulls;
 	}
 
 	public static PullRequest convertMergeRequest(GitlabMergeRequest glmr, String gitlabUrl, String namespace,
-			String repo) {
+			String repo, Environment env) {
 		PullRequest pull = new PullRequest();
 
-		pull.setAssignee(convertUser(glmr.getAssignee()));
-		pull.setUser(convertUser(glmr.getAuthor()));
+		pull.setAssignee(convertUser(glmr.getAssignee(), env));
+		pull.setUser(convertUser(glmr.getAuthor(), env));
 		pull.setCreatedAt(glmr.getCreatedAt());
 		pull.setBody(glmr.getDescription());
 		pull.setId(glmr.getId());
@@ -223,7 +231,7 @@ public class GitlabToGithubConverter {
 		pull.setNumber(glmr.getIid());
 		pull.setHead(createPullRequestMarker(glmr.getSourceBranch(), namespace, repo));
 		pull.setBase(createPullRequestMarker(glmr.getTargetBranch(), namespace, repo));
-		convertMergeRequestState(pull, glmr);
+		convertMergeRequestState(pull, glmr, env);
 		pull.setTitle(glmr.getTitle());
 
 		if (glmr.getUpdatedAt() != null) {
@@ -242,7 +250,7 @@ public class GitlabToGithubConverter {
 		return pull;
 	}
 
-	private static void convertMergeRequestState(PullRequest pull, GitlabMergeRequest glmr) {
+	private static void convertMergeRequestState(PullRequest pull, GitlabMergeRequest glmr, Environment env) {
 		if ("can_be_merged".equals(glmr.getMergeStatus())) {
 			pull.setMergeable(true);
 		}
@@ -261,9 +269,9 @@ public class GitlabToGithubConverter {
 			pull.setMergedAt(glmr.getUpdatedAt());
 
 			if (glmr.getAssignee() != null) {
-				pull.setMergedBy(convertUser(glmr.getAssignee()));
+				pull.setMergedBy(convertUser(glmr.getAssignee(), env));
 			} else {
-				pull.setMergedBy(convertUser(glmr.getAuthor()));
+				pull.setMergedBy(convertUser(glmr.getAuthor(), env));
 			}
 		} else {
 			throw new RuntimeException("Unknown MR state: " + glmr.getState());
@@ -302,7 +310,7 @@ public class GitlabToGithubConverter {
 		return milestone;
 	}
 
-	public static User convertUser(GitlabUser gluser) {
+	public static User convertUser(GitlabUser gluser, Environment env) {
 		if (gluser == null) {
 			return null;
 		}
@@ -311,8 +319,11 @@ public class GitlabToGithubConverter {
 		user.setId(gluser.getId());
 		user.setLogin(gluser.getUsername());
 		String avatarUrl = gluser.getAvatarUrl();
-		if (avatarUrl != null && avatarUrl.length() > 0) {
+		if (avatarUrl != null) {
 			user.setAvatarUrl(avatarUrl);
+		}
+		if (user.getAvatarUrl() == null || user.getAvatarUrl().length() == 0) {
+			user.setAvatarUrl(env.getProperty(Constants.KEY_FALLBACK_AVATAR_URL));
 		}
 		user.setBio(gluser.getBio());
 		user.setEmail(gluser.getEmail());
@@ -323,30 +334,30 @@ public class GitlabToGithubConverter {
 		return user;
 	}
 
-	public static List<RepositoryCommit> convertCommits(List<GitlabCommit> glcommits) {
+	public static List<RepositoryCommit> convertCommits(List<GitlabCommit> glcommits, Environment env) {
 		List<RepositoryCommit> commits = new ArrayList<>(glcommits.size());
 
 		for (GitlabCommit glcommit : glcommits) {
-			commits.add(convertCommit(glcommit, null, null));
+			commits.add(convertCommit(glcommit, null, null, env));
 		}
 
 		return commits;
 	}
 
-	public static List<Comment> convertComments(List<GitlabNote> glnotes) {
+	public static List<Comment> convertComments(List<GitlabNote> glnotes, Environment env) {
 		List<Comment> comments = new ArrayList<>(glnotes.size());
 
 		for (GitlabNote glnote : glnotes) {
-			comments.add(convertComment(glnote));
+			comments.add(convertComment(glnote, env));
 		}
 
 		return comments;
 	}
 
-	private static Comment convertComment(GitlabNote glnote) {
+	private static Comment convertComment(GitlabNote glnote, Environment env) {
 		Comment comment = new Comment();
 
-		comment.setUser(convertUser(glnote.getAuthor()));
+		comment.setUser(convertUser(glnote.getAuthor(), env));
 		comment.setBody(glnote.getBody());
 		comment.setCreatedAt(glnote.getCreatedAt());
 		comment.setId(glnote.getId());
@@ -388,25 +399,25 @@ public class GitlabToGithubConverter {
 	}
 
 	public static List<Event> convertMergeRequestsToEvents(List<GitlabMergeRequest> glmergerequests, String gitlabUrl,
-			String namespace, String repo) {
+			String namespace, String repo, Environment env) {
 		List<Event> events = new ArrayList<>(glmergerequests.size());
 
 		for (GitlabMergeRequest glmergerequest : glmergerequests) {
-			events.add(convertMergeRequestToEvent(glmergerequest, gitlabUrl, namespace, repo));
+			events.add(convertMergeRequestToEvent(glmergerequest, gitlabUrl, namespace, repo, env));
 		}
 
 		return events;
 	}
 
 	public static Event convertMergeRequestToEvent(GitlabMergeRequest glmergerequest, String gitlabUrl,
-			String namespace, String repo) {
+			String namespace, String repo, Environment env) {
 		Event event = new Event();
 
 		event.setType(Event.TYPE_PULL_REQUEST);
 		event.setCreatedAt(glmergerequest.getUpdatedAt());
 
 		PullRequestPayload payload = new PullRequestPayload();
-		payload.setPullRequest(convertMergeRequest(glmergerequest, gitlabUrl, namespace, repo));
+		payload.setPullRequest(convertMergeRequest(glmergerequest, gitlabUrl, namespace, repo, env));
 		payload.setNumber(payload.getPullRequest().getNumber());
 
 		event.setPayload(payload);

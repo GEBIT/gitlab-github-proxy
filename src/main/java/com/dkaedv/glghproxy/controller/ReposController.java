@@ -25,6 +25,7 @@ import org.gitlab.api.models.GitlabProjectHook;
 import org.gitlab.api.models.GitlabUser;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.stereotype.Controller;
@@ -61,8 +62,11 @@ public class ReposController {
 	private Boolean treatOrgaAsOwner;
 
 	@Autowired
-	ObjectMapper objectMapper;
+	private ObjectMapper objectMapper;
 
+	@Autowired
+	private Environment env;
+	
 	@RequestMapping("/{namespace}/{repo}/branches")
 	@ResponseBody
 	public List<RepositoryBranch> getBranches(@PathVariable String namespace, @PathVariable String repo,
@@ -101,7 +105,7 @@ public class ReposController {
 			LOG.warn("Unable to find gitlab user based on email: " + glcommit.getAuthorEmail() + " in repository: " + namespace + "/" + repo);
 		}
 
-		return GitlabToGithubConverter.convertCommit(glcommit, gldiffs, user);
+		return GitlabToGithubConverter.convertCommit(glcommit, gldiffs, user, env);
 	}
 
 	@RequestMapping("/{namespace}/{repo}/events")
@@ -115,7 +119,7 @@ public class ReposController {
 		List<GitlabMergeRequest> glmergerequests = api.getMergeRequests(namespace + "/" + repo);
 		Map<Integer,GitlabUser> userCache = new HashMap<Integer, GitlabUser>();
 
-		return GitlabToGithubConverter.convertMergeRequestsToEvents(glmergerequests, gitlabUrl, namespace, repo);
+		return GitlabToGithubConverter.convertMergeRequestsToEvents(glmergerequests, gitlabUrl, namespace, repo, env);
 	}
 
 	@RequestMapping("/{namespace}/{repo}/pulls")
@@ -134,7 +138,8 @@ public class ReposController {
 		List<PullRequest> mergeRequests = GitlabToGithubConverter.convertMergeRequests(glmergerequests,
 				gitlabUrl,
 				namespace,
-				repo);
+				repo,
+				env);
 		// LOG.info(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(mergeRequests));
 		return mergeRequests;
 	}
@@ -149,7 +154,7 @@ public class ReposController {
 		GitlabAPI api = gitlab.connect(authorization);
 		GitlabMergeRequest mergeRequest = findMergeRequestByProjectAndIid(namespace, repo, id, api);
 
-		return GitlabToGithubConverter.convertMergeRequest(mergeRequest, gitlabUrl, namespace, repo);
+		return GitlabToGithubConverter.convertMergeRequest(mergeRequest, gitlabUrl, namespace, repo, env);
 	}
 
 
@@ -164,7 +169,7 @@ public class ReposController {
 		GitlabMergeRequest mergeRequest = findMergeRequestByProjectAndIid(namespace, repo, id, api);
 		List<GitlabCommit> commits = api.getCommits(mergeRequest);
 
-		return GitlabToGithubConverter.convertCommits(commits);
+		return GitlabToGithubConverter.convertCommits(commits, env);
 	}
 
 	private GitlabMergeRequest findMergeRequestByProjectAndIid(String namespace, String repo, Integer id, GitlabAPI api)
@@ -193,7 +198,7 @@ public class ReposController {
 		GitlabMergeRequest mergeRequest = findMergeRequestByProjectAndIid(namespace, repo, id, api);
 		List<GitlabNote> notes = api.getNotes(mergeRequest);
 
-		return GitlabToGithubConverter.convertComments(notes);
+		return GitlabToGithubConverter.convertComments(notes, env);
 	}
 
 	/**
