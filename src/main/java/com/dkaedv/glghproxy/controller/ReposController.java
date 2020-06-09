@@ -245,7 +245,10 @@ public class ReposController {
 				false, // no note events
 				hook.getEvents().contains("push"), // there's no differentiation for tag-pushes in the github API
 				Constants.STRICT_SSL,
-				null);
+				false, // job events
+				false, // pipeline events
+				false, // wiki events
+				null); // token
 
 		return GitlabToGithubConverter.convertHook(createdHook);
 	}
